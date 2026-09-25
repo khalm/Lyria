@@ -541,10 +541,10 @@
         return;
       }
 
-      let systemInstruction = "You are Lyria, an expert lyricist and songwriting collaborator. Write full, cohesive song lyrics with clear structure (Verse 1, Chorus, Verse 2, Chorus, Bridge, Chorus, Outro). Prioritize natural rhythmic meter, distinct line cadence, and intentional rhyming.";
+      let systemInstruction = "You are Lyria, an elite lyricist and songwriting collaborator. Write full, cohesive song lyrics with clear structure (Verse 1, Chorus, Verse 2, Chorus, Bridge, Chorus, Outro). Prioritize natural rhythmic meter, distinct line cadence, and intentional rhyming.";
       
       if (references) {
-        systemInstruction += `\n\nCRITICAL DIRECTIVE - MATCH USER'S STYLE:\nAnalyze and embody the author's voice, phrasing, line length, rhyme density, and thematic tone from these reference lyrics:\n--- BEGIN REFERENCE SONGS ---\n${references}\n--- END REFERENCE SONGS ---`;
+        systemInstruction += `\n\nCRITICAL DIRECTIVE - STYLE EXTRACTION ONLY (DO NOT REUSE):\nAnalyze the provided reference lyrics ONLY to understand the author's stylistic DNA:\n1. Metrics and meter (syllable counts, rhythmic pulse, line lengths)\n2. Phrasing cadence and structural tendencies (e.g. repeated refrains, hook placement)\n3. Rhyme mechanisms (preference for slant rhymes, internal rhymes, vowel assonance, or exact rhymes)\n4. Tonality and vocabulary tier (grit, imagery type, philosophical depth, emotional weight)\n\nSTRICT ANTI-PLAGIARISM RULE:\nDo NOT copy, recycle, paraphrase, or reuse any specific lines, verses, hooks, distinct catchphrases, or exact wording from the reference lyrics. Every single line in your generated response must be 100% original and written from scratch, matching ONLY the rhythmic and artistic fingerprints of the author.\n\n--- STYLE FINGERPRINT REFERENCES ---\n${references}\n--- END REFERENCES ---`;
       }
 
       generateBtn.disabled = true;
@@ -558,10 +558,10 @@
             parts: [{ text: systemInstruction }]
           },
           contents: [{
-            parts: [{ text: `Starting line or theme: "${starter}". Complete the song building directly from this concept.` }]
+            parts: [{ text: `Starting line or theme: "${starter}". Complete a completely original song in the learned style building directly from this concept.` }]
           }],
           generationConfig: {
-            temperature: 0.8,
+            temperature: 0.85,
             topP: 0.95
           }
         });
@@ -595,7 +595,7 @@
       });
     }
 
-    // Register Service Worker for PWA
+    // Register Service Worker for PWA installation
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js')
         .then(() => console.log('Service Worker Registered'))

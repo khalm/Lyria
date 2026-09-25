@@ -6,7 +6,13 @@
   <meta name="theme-color" content="#121212">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <link rel="manifest" href="manifest.json">
+  
+  <!-- Direct Icon Links for Browsers & Homescreens -->
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  
+  <link rel="manifest" href="./manifest.json">
   <title>Lyria</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
@@ -33,7 +39,7 @@
       background-color: var(--bg);
       color: var(--text);
       padding: 16px;
-      padding-bottom: 40px;
+      padding-bottom: 90px;
       line-height: 1.5;
     }
     header {
@@ -208,7 +214,6 @@
       border-color: #2e6040;
     }
 
-    /* Fixed floating HUD toolbar so it never scrolls away */
     .editor-wrapper {
       position: relative;
       margin-top: 10px;
@@ -218,29 +223,29 @@
     }
     .editor-floating-bar {
       position: fixed;
-      top: 16px;
-      right: 16px;
+      bottom: 24px;
+      right: 20px;
       display: none;
       gap: 8px;
-      z-index: 100;
-      background: rgba(28, 28, 30, 0.88);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 24px;
-      padding: 4px 6px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      z-index: 150;
+      background: rgba(28, 28, 30, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 30px;
+      padding: 6px 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
     }
     .pill-btn {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       background: #2a2a2c;
       border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #e0e0e0;
-      padding: 6px 12px;
-      border-radius: 18px;
-      font-size: 0.8rem;
+      color: #f0f0f0;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.15s ease, color 0.15s ease;
@@ -258,11 +263,6 @@
       color: #4ade80;
       border-color: rgba(74, 222, 128, 0.4);
       background: rgba(20, 45, 30, 0.9);
-    }
-    .pill-btn svg {
-      width: 13px;
-      height: 13px;
-      fill: currentColor;
     }
     #outputText {
       width: 100%;
@@ -377,7 +377,7 @@
 
     #toast {
       position: fixed;
-      bottom: 24px;
+      bottom: 84px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(30, 30, 30, 0.96);
@@ -440,20 +440,14 @@
     <button id="generateBtn" class="primary-btn" onclick="generateLyrics()">Generate Original Song</button>
   </div>
 
-  <!-- Persistent floating action pill that stays fixed regardless of scrolling -->
+  <!-- Bottom Floating Action Bar -->
   <div id="editorFloatingBar" class="editor-floating-bar">
     <button type="button" id="editorUndoBtn" class="pill-btn" onclick="triggerUndo()" disabled>
-      <svg viewBox="0 0 24 24">
-        <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
-      </svg>
-      <span id="undoCountText">Undo</span>
+      ↩️ <span id="undoCountText">Undo</span>
     </button>
 
     <button type="button" id="copyPillBtn" class="pill-btn" onclick="copyLyrics()">
-      <svg id="copyIcon" viewBox="0 0 24 24">
-        <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/>
-      </svg>
-      <span id="copyPillText">Copy</span>
+      📋 <span id="copyPillText">Copy</span>
     </button>
   </div>
 
@@ -517,12 +511,11 @@
     const modalSongName = document.getElementById('modalSongName');
     const toast = document.getElementById('toast');
 
-    // 20-Step Granular Undo System
+    // 20-Step Undo History
     const MAX_UNDO_STEPS = 20;
     let undoStack = [];
     let currentCommittedText = '';
     let typingTimer = null;
-    let isReverting = false;
 
     function resetHistory(initialText) {
       undoStack = [];
@@ -551,10 +544,8 @@
       }
     }
 
-    // Capture every typing input accurately across mobile devices
+    // Capture typing updates reliably across mobile virtual keyboards
     outputText.addEventListener('input', (e) => {
-      if (isReverting) return;
-
       const newText = outputText.value;
       const lengthDiff = Math.abs(newText.length - currentCommittedText.length);
       const isEnterKey = (e.inputType === 'insertLineBreak' || (newText.slice(-1) === '\n'));
@@ -576,7 +567,7 @@
       }, 500);
     });
 
-    // Zero-Jump Viewport Undo: Replaces string without dropping viewport location
+    // Zero-Jump Viewport Undo
     function triggerUndo() {
       clearTimeout(typingTimer);
 
@@ -587,23 +578,24 @@
 
       if (undoStack.length === 0) return;
 
-      // Lock current viewport position
-      const pageScrollY = window.pageYOffset || document.documentElement.scrollTop;
+      const previousState = undoStack.pop();
+
+      // Read positions before replacement
+      const pageScrollY = window.scrollY || window.pageYOffset;
       const textareaScrollTop = outputText.scrollTop;
 
-      isReverting = true;
-      const previousState = undoStack.pop();
+      // Freeze document scroll
+      document.documentElement.style.scrollBehavior = 'auto';
+
       outputText.value = previousState;
       currentCommittedText = previousState;
 
-      // Restore scroll positions seamlessly
       outputText.scrollTop = textareaScrollTop;
-      window.scrollTo({ top: pageScrollY, behavior: 'instant' });
+      window.scrollTo(0, pageScrollY);
 
       requestAnimationFrame(() => {
         outputText.scrollTop = textareaScrollTop;
-        window.scrollTo({ top: pageScrollY, behavior: 'instant' });
-        isReverting = false;
+        window.scrollTo(0, pageScrollY);
       });
 
       updateUndoButton();
@@ -798,7 +790,7 @@
       currentSongTitle.textContent = song.title;
       outputText.value = song.text;
       outputContainer.style.display = 'block';
-      editorFloatingBar.style.display = 'flex';
+      editorFloatingBar.style.display = 'inline-flex';
       outputContainer.scrollIntoView({ behavior: 'smooth' });
 
       resetHistory(song.text);
@@ -1049,7 +1041,7 @@ ${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styl
           outputText.value = text;
           currentSongTitle.textContent = starter;
           outputContainer.style.display = 'block';
-          editorFloatingBar.style.display = 'flex';
+          editorFloatingBar.style.display = 'inline-flex';
           outputContainer.scrollIntoView({ behavior: 'smooth' });
 
           resetHistory(text);

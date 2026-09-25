@@ -236,7 +236,7 @@
       <button type="button" id="testKeyBtn" class="action-btn" onclick="testApiKey()">Test</button>
     </div>
 
-    <label for="referenceLyrics">Reference Songs / Past Lyrics (Style Guide)</label>
+    <label for="referenceLyrics">Reference Songs / Past Lyrics (Raw Sources)</label>
     
     <div style="margin-bottom: 8px;">
       <input type="file" id="fileInput" accept="application/pdf, text/plain" multiple style="display: none;" onchange="handleFileUpload(event)">
@@ -245,7 +245,7 @@
       </button>
     </div>
 
-    <textarea id="referenceLyrics" rows="8" placeholder="Paste full songs, verses, or import multiple PDFs/text files. Lyria will learn your meter, vocabulary, rhyme density, and tone."></textarea>
+    <textarea id="referenceLyrics" rows="8" placeholder="Paste full songs, verses, or import multiple PDFs/text files."></textarea>
   </details>
 
   <!-- Input Area -->
@@ -253,7 +253,7 @@
     <label for="starterLine" style="margin-top: 0;">Opening Line or Theme (Song Title)</label>
     <input type="text" id="starterLine" placeholder="e.g. Iron string buzzing on the twelfth fret">
 
-    <button id="generateBtn" class="primary-btn" onclick="generateLyrics()">Generate Lyrics</button>
+    <button id="generateBtn" class="primary-btn" onclick="generateLyrics()">Generate Original Song</button>
   </div>
 
   <!-- Output Area -->
@@ -280,7 +280,6 @@
     const songsListContainer = document.getElementById('songsListContainer');
     const toast = document.getElementById('toast');
 
-    // Updated active endpoints
     const MODELS = [
       'gemini-3.8-flash',
       'gemini-3.5-flash-lite',
@@ -299,7 +298,6 @@
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Load saved settings & song history
     window.addEventListener('DOMContentLoaded', () => {
       const savedKey = localStorage.getItem('lyria_gemini_api_key');
       const savedRefs = localStorage.getItem('lyria_reference_text');
@@ -314,12 +312,12 @@
       renderSavedSongs();
     });
 
-    // Auto-save settings
     apiKeyInput.addEventListener('input', () => {
       localStorage.setItem('lyria_gemini_api_key', apiKeyInput.value.trim());
     });
     refLyricsInput.addEventListener('input', () => {
       localStorage.setItem('lyria_reference_text', refLyricsInput.value.trim());
+      localStorage.removeItem('lyria_compiled_profile');
     });
 
     function appendReferenceText(newText) {
@@ -328,7 +326,6 @@
       refLyricsInput.dispatchEvent(new Event('input'));
     }
 
-    // Song library storage
     function getStoredSongs() {
       try {
         return JSON.parse(localStorage.getItem('lyria_saved_songs') || '[]');
@@ -403,7 +400,6 @@
       });
     }
 
-    // PDF parsing
     async function parsePdfFile(file) {
       const typedarray = new Uint8Array(await file.arrayBuffer());
       const pdf = await pdfjsLib.getDocument(typedarray).promise;
@@ -465,7 +461,6 @@
       event.target.value = '';
     }
 
-    // Call API with fallback support
     async function callGemini(key, bodyPayload) {
       let lastError = null;
 
@@ -498,10 +493,9 @@
           }
         }
       }
-      throw new Error(lastError || 'All models are currently experiencing high demand. Please try again in a moment.');
+      throw new Error(lastError || 'All models are busy. Please try again.');
     }
 
-    // Verify API Key
     async function testApiKey() {
       const key = apiKeyInput.value.trim();
 
@@ -526,7 +520,46 @@
       }
     }
 
-    // Generate Lyrics
+    // Step 1: Synthesize both Style Fingerprint AND Thematic DNA
+    async function getOrCompileStyleProfile(key, references) {
+      const cached = localStorage.getItem('lyria_compiled_profile');
+      if (cached) return cached;
+
+      generateBtn.textContent = 'Synthesizing themes & style...';
+
+      const prompt = `Analyze these reference song lyrics and synthesize the author's lyrical identity.
+Extract two clear dimensions:
+
+1. THEMATIC DNA & SUBJECT MATTERS:
+- What core themes, conflicts, and existential questions does this writer frequently explore? (e.g. rebirth, inner friction, mortality, autonomy, disillusionment, resilience)
+- What types of metaphors, sensory images, and motifs do they gravitate towards? (e.g. biological terms, physical ruin, decay vs growth, industrial vs natural imagery)
+- What emotional perspective or psychological posture do their songs embody?
+
+2. STRUCTURAL & RHYTHMIC FINGERPRINT:
+- Cadence, line lengths, syllable pacing, and natural rhythmic meter.
+- Rhyme style (preference for internal rhymes, slant/half rhymes, vowel resonance, or direct end rhymes).
+- Verse-to-chorus dynamic and hook design.
+
+CRITICAL RULE:
+Summarize concepts, recurring themes, and stylistic rules conceptually. DO NOT copy or include full song verses, chorus lines, or verbatim sentences from the source texts.
+
+--- SONGS ---
+${references}
+--- END SONGS ---`;
+
+      const data = await callGemini(key, {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.25 }
+      });
+
+      const profile = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (profile) {
+        localStorage.setItem('lyria_compiled_profile', profile);
+      }
+      return profile || '';
+    }
+
+    // Step 2: Write fresh lyrics embodying the themes and style
     async function generateLyrics() {
       const key = apiKeyInput.value.trim();
       const starter = starterLineInput.value.trim();
@@ -542,24 +575,35 @@
         return;
       }
 
-      let systemInstruction = "You are Lyria, an elite lyricist and songwriting collaborator. Write full, cohesive song lyrics with clear structure (Verse 1, Chorus, Verse 2, Chorus, Bridge, Chorus, Outro). Prioritize natural rhythmic meter, distinct line cadence, and intentional rhyming.";
-      
-      if (references) {
-        systemInstruction += `\n\nCRITICAL DIRECTIVE - STYLE EXTRACTION ONLY (DO NOT REUSE):\nAnalyze the provided reference lyrics ONLY to understand the author's stylistic DNA:\n1. Metrics and meter (syllable counts, rhythmic pulse, line lengths)\n2. Phrasing cadence and structural tendencies (e.g. repeated refrains, hook placement)\n3. Rhyme mechanisms (preference for slant rhymes, internal rhymes, vowel assonance, or exact rhymes)\n4. Tonality and vocabulary tier (grit, imagery type, philosophical depth, emotional weight)\n\nSTRICT ANTI-PLAGIARISM RULE:\nDo NOT copy, recycle, paraphrase, or reuse any specific lines, verses, hooks, distinct catchphrases, or exact wording from the reference lyrics. Every single line in your generated response must be 100% original and written from scratch, matching ONLY the rhythmic and artistic fingerprints of the author.\n\n--- STYLE FINGERPRINT REFERENCES ---\n${references}\n--- END REFERENCES ---`;
-      }
-
       generateBtn.disabled = true;
-      generateBtn.textContent = 'Writing...';
+      generateBtn.textContent = 'Starting...';
       outputContainer.style.display = 'none';
       outputText.textContent = '';
 
       try {
+        let styleAndThemes = '';
+        if (references) {
+          styleAndThemes = await getOrCompileStyleProfile(key, references);
+        }
+
+        generateBtn.textContent = 'Writing song in your voice...';
+
+        const systemInstruction = `You are Lyria, an elite lyricist writing complete, authentic songs in this artist's distinct voice.
+Structure: Standard full song progression (Verse 1, Chorus, Verse 2, Chorus, Bridge, Chorus, Outro).
+
+ARTISTIC MISSION:
+- Embody the author's emotional perspective, recurring philosophical themes, vocabulary depth, and metaphorical world described in their profile.
+- Match their distinctive rhythmic cadence, line density, and rhyme craft.
+- STRICT RULE ON ORIGINALITY: Write every single line, hook, and verse 100% brand-new for this prompt. Never recycle or copy past lines or catchphrases verbatim. Express their signature themes through completely fresh imagery and scenarios.
+
+${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styleAndThemes}` : ''}`;
+
         const data = await callGemini(key, {
           system_instruction: {
             parts: [{ text: systemInstruction }]
           },
           contents: [{
-            parts: [{ text: `Starting line or theme: "${starter}". Complete a completely original song in the learned style building directly from this concept.` }]
+            parts: [{ text: `New song seed / opening concept: "${starter}". Write a complete, powerful original song that belongs in this artist's catalog, expanding naturally from this seed.` }]
           }],
           generationConfig: {
             temperature: 0.85,
@@ -575,7 +619,6 @@
           outputContainer.style.display = 'block';
           outputContainer.scrollIntoView({ behavior: 'smooth' });
 
-          // Automatically save song using the prompt title
           saveSongToStorage(starter, text);
           showToast(`Saved "${starter}" to library`);
         } else {
@@ -586,7 +629,7 @@
         showToast(`Notice: ${err.message}`);
       } finally {
         generateBtn.disabled = false;
-        generateBtn.textContent = 'Generate Lyrics';
+        generateBtn.textContent = 'Generate Original Song';
       }
     }
 
@@ -596,7 +639,6 @@
       });
     }
 
-    // Register Service Worker for PWA installation
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js')
         .then(() => console.log('Service Worker Registered'))

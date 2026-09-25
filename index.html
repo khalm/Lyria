@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.json">
   <title>Lyria</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
       --bg: #121212;
@@ -86,10 +87,10 @@
       display: flex;
       gap: 8px;
     }
-    .test-btn {
+    .action-btn {
       width: auto;
       margin-top: 0;
-      padding: 0 16px;
+      padding: 10px 16px;
       font-size: 0.85rem;
       font-weight: 600;
       background: #2a2a2c;
@@ -99,7 +100,7 @@
       cursor: pointer;
       flex-shrink: 0;
     }
-    .test-btn:active {
+    .action-btn:active {
       background: #333336;
     }
     .main-card {
@@ -195,11 +196,20 @@
     <label for="apiKey">Gemini API Key</label>
     <div class="key-row">
       <input type="password" id="apiKey" placeholder="AI Studio Key">
-      <button type="button" id="testKeyBtn" class="test-btn" onclick="testApiKey()">Test</button>
+      <button type="button" id="testKeyBtn" class="action-btn" onclick="testApiKey()">Test</button>
     </div>
 
     <label for="referenceLyrics">Reference Songs / Past Lyrics (Style Guide)</label>
-    <textarea id="referenceLyrics" rows="8" placeholder="Paste full songs, verses, or fragments. Lyria will adopt your meter, vocabulary, rhyme patterns, and tone."></textarea>
+    
+    <!-- Multi-file import trigger -->
+    <div style="margin-bottom: 8px;">
+      <input type="file" id="fileInput" accept="application/pdf, text/plain" multiple style="display: none;" onchange="handleFileUpload(event)">
+      <button type="button" class="action-btn" style="width: 100%;" onclick="document.getElementById('fileInput').click()">
+        📄 Import Multiple PDFs / Text Files
+      </button>
+    </div>
+
+    <textarea id="referenceLyrics" rows="8" placeholder="Paste full songs, verses, or import multiple PDFs/text files. Lyria will learn your meter, vocabulary, rhyme density, and tone."></textarea>
   </details>
 
   <!-- Input Area -->
@@ -232,6 +242,11 @@
     const settingsDetails = document.getElementById('settingsDetails');
     const toast = document.getElementById('toast');
 
+    // PDF.js worker setup
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
     function showToast(msg) {
       toast.textContent = msg;
       toast.style.opacity = '1';
@@ -251,7 +266,7 @@
       }
     });
 
-    // Auto-save on input
+    // Auto-save on typing
     apiKeyInput.addEventListener('input', () => {
       localStorage.setItem('lyria_gemini_api_key', apiKeyInput.value.trim());
     });
@@ -259,7 +274,76 @@
       localStorage.setItem('lyria_reference_text', refLyricsInput.value.trim());
     });
 
-    // Test API Key
+    function appendReferenceText(newText) {
+      const current = refLyricsInput.value.trim();
+      refLyricsInput.value = current ? `${current}\n\n${newText}` : newText;
+      refLyricsInput.dispatchEvent(new Event('input'));
+    }
+
+    // PDF text parser
+    async function parsePdfFile(file) {
+      const typedarray = new Uint8Array(await file.arrayBuffer());
+      const pdf = await pdfjsLib.getDocument(typedarray).promise;
+      let fullText = '';
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
+        let lastY = null;
+        let pageText = '';
+
+        for (const item of content.items) {
+          if (lastY !== null && Math.abs(item.transform[5] - lastY) > 8) {
+            pageText += '\n';
+          }
+          pageText += item.str;
+          lastY = item.transform[5];
+        }
+        fullText += pageText + '\n\n';
+      }
+      return fullText.trim();
+    }
+
+    // Multi-file upload handler
+    async function handleFileUpload(event) {
+      const files = Array.from(event.target.files);
+      if (!files.length) return;
+
+      showToast(`Importing ${files.length} file(s)...`);
+
+      let combinedImportedText = '';
+      let successfulCount = 0;
+
+      for (const file of files) {
+        try {
+          let extractedText = '';
+
+          if (file.type === 'text/plain') {
+            extractedText = (await file.text()).trim();
+          } else if (file.type === 'application/pdf') {
+            extractedText = await parsePdfFile(file);
+          }
+
+          if (extractedText) {
+            combinedImportedText += `\n\n--- [${file.name}] ---\n${extractedText}`;
+            successfulCount++;
+          }
+        } catch (err) {
+          console.error(`Failed reading ${file.name}:`, err);
+        }
+      }
+
+      if (combinedImportedText) {
+        appendReferenceText(combinedImportedText.trim());
+        showToast(`Added ${successfulCount} file(s) to style corpus`);
+      } else {
+        showToast('Could not extract text from selected file(s)');
+      }
+
+      event.target.value = '';
+    }
+
+    // Verify API Key
     async function testApiKey() {
       const key = apiKeyInput.value.trim();
 

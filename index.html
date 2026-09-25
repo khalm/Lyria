@@ -205,33 +205,45 @@
       color: #4ade80;
       border-color: #2e6040;
     }
+
+    /* Pinned Sticky Bar inside the Editor Card */
     .editor-wrapper {
       position: relative;
       margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #171719;
+      overflow: hidden;
     }
-    .editor-floating-bar {
-      position: absolute;
-      top: 10px;
-      right: 10px;
+    .editor-sticky-bar {
+      position: sticky;
+      top: 0;
+      left: 0;
+      right: 0;
       display: flex;
-      gap: 6px;
-      z-index: 5;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: rgba(23, 23, 25, 0.95);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 20;
     }
     .pill-btn {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      background: rgba(42, 42, 44, 0.88);
+      background: #2a2a2c;
       border: 1px solid rgba(255, 255, 255, 0.12);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
       color: #e0e0e0;
-      padding: 6px 11px;
+      padding: 6px 12px;
       border-radius: 6px;
       font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: background 0.15s ease, color 0.15s ease;
     }
     .pill-btn:active {
       transform: scale(0.96);
@@ -255,12 +267,11 @@
     #outputText {
       width: 100%;
       min-height: 420px;
-      background: #171719;
-      border: 1px solid var(--border);
+      background: transparent;
+      border: none;
       color: #fff;
       padding: 14px;
-      padding-top: 46px;
-      border-radius: 8px;
+      border-radius: 0;
       font-size: 0.95rem;
       line-height: 1.6;
       resize: vertical;
@@ -268,6 +279,7 @@
       white-space: pre-wrap;
       -webkit-user-select: text;
       user-select: text;
+      outline: none;
     }
     .history-item {
       display: flex;
@@ -365,7 +377,7 @@
 
     #toast {
       position: fixed;
-      bottom: 20px;
+      bottom: 24px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(30, 30, 30, 0.96);
@@ -446,9 +458,9 @@
       </div>
     </div>
 
-    <!-- Editable Lyric Area with Code-Field Copy & General Undo Button -->
+    <!-- Editable Lyric Area with Sticky Floating Action Bar -->
     <div class="editor-wrapper">
-      <div class="editor-floating-bar">
+      <div class="editor-sticky-bar">
         <button type="button" id="editorUndoBtn" class="pill-btn" onclick="triggerUndo()" disabled>
           <svg viewBox="0 0 24 24">
             <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
@@ -534,16 +546,15 @@
       }
     }
 
-    // Capture every typing input without mobile keyboard loss
+    // Capture typing updates reliably across mobile virtual keyboards
     outputText.addEventListener('input', (e) => {
       if (isReverting) return;
 
       const newText = outputText.value;
       const lengthDiff = Math.abs(newText.length - currentCommittedText.length);
       const isEnterKey = (e.inputType === 'insertLineBreak' || (newText.slice(-1) === '\n'));
-      const isLargePasteOrCut = lengthDiff > 10;
+      const isLargePasteOrCut = lengthDiff > 8;
 
-      // Immediately save state on Enter or Paste/Cut
       if (isEnterKey || isLargePasteOrCut) {
         clearTimeout(typingTimer);
         pushToUndoStack(currentCommittedText);
@@ -551,21 +562,19 @@
         return;
       }
 
-      // Group regular continuous typing into chunks
       clearTimeout(typingTimer);
       typingTimer = setTimeout(() => {
         if (currentCommittedText !== newText) {
           pushToUndoStack(currentCommittedText);
           currentCommittedText = newText;
         }
-      }, 750);
+      }, 700);
     });
 
-    // Viewport-safe Undo: Reverts text without jumping the screen
+    // Zero-Jump Viewport Undo
     function triggerUndo() {
       clearTimeout(typingTimer);
 
-      // If user is currently typing something uncommitted, save it as forward state
       if (currentCommittedText !== outputText.value) {
         pushToUndoStack(currentCommittedText);
         currentCommittedText = outputText.value;
@@ -573,28 +582,27 @@
 
       if (undoStack.length === 0) return;
 
-      // Lock current scroll positions
-      const pageScrollY = window.scrollY || window.pageYOffset;
-      const textareaScrollTop = outputText.scrollTop;
-      const selectionStart = outputText.selectionStart;
+      // Lock view and internal textarea offsets
+      const savedPageY = window.pageYOffset || document.documentElement.scrollTop;
+      const savedTextareaY = outputText.scrollTop;
 
       isReverting = true;
       const previousState = undoStack.pop();
       outputText.value = previousState;
       currentCommittedText = previousState;
 
-      // Restore scroll and cursor position exactly
-      outputText.scrollTop = textareaScrollTop;
-      window.scrollTo(0, pageScrollY);
-      
-      const newCursor = Math.min(selectionStart, previousState.length);
-      try {
-        outputText.setSelectionRange(newCursor, newCursor);
-      } catch (err) {}
+      // Restore scroll locations without jumping
+      outputText.scrollTop = savedTextareaY;
+      window.scrollTo(0, savedPageY);
 
       updateUndoButton();
       showToast('Undone');
-      setTimeout(() => { isReverting = false; }, 50);
+
+      requestAnimationFrame(() => {
+        outputText.scrollTop = savedTextareaY;
+        window.scrollTo(0, savedPageY);
+        isReverting = false;
+      });
     }
 
     const MODELS = [
@@ -610,7 +618,7 @@
     function showToast(msg) {
       toast.textContent = msg;
       toast.style.opacity = '1';
-      setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+      setTimeout(() => { toast.style.opacity = '0'; }, 2600);
     }
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));

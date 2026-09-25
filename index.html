@@ -140,6 +140,7 @@
       padding: 16px;
       margin-bottom: 14px;
       display: none;
+      position: relative;
     }
     .output-header {
       display: flex;
@@ -154,6 +155,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 65%;
     }
     .header-btns {
       display: flex;
@@ -206,30 +208,28 @@
       border-color: #2e6040;
     }
 
-    /* Pinned Sticky Bar inside the Editor Card */
+    /* Fixed floating HUD toolbar so it never scrolls away */
     .editor-wrapper {
       position: relative;
       margin-top: 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #171719;
-      overflow: hidden;
     }
-    .editor-sticky-bar {
-      position: sticky;
-      top: 0;
-      left: 0;
-      right: 0;
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
+    .editor-floating-bar {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      display: none;
       gap: 8px;
-      padding: 8px 10px;
-      background: rgba(23, 23, 25, 0.95);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      z-index: 20;
+      z-index: 100;
+      background: rgba(28, 28, 30, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 4px 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
     .pill-btn {
       display: inline-flex;
@@ -239,7 +239,7 @@
       border: 1px solid rgba(255, 255, 255, 0.12);
       color: #e0e0e0;
       padding: 6px 12px;
-      border-radius: 6px;
+      border-radius: 18px;
       font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
@@ -266,12 +266,12 @@
     }
     #outputText {
       width: 100%;
-      min-height: 420px;
+      min-height: 480px;
       background: transparent;
       border: none;
       color: #fff;
       padding: 14px;
-      border-radius: 0;
+      border-radius: 8px;
       font-size: 0.95rem;
       line-height: 1.6;
       resize: vertical;
@@ -440,6 +440,23 @@
     <button id="generateBtn" class="primary-btn" onclick="generateLyrics()">Generate Original Song</button>
   </div>
 
+  <!-- Persistent floating action pill that stays fixed regardless of scrolling -->
+  <div id="editorFloatingBar" class="editor-floating-bar">
+    <button type="button" id="editorUndoBtn" class="pill-btn" onclick="triggerUndo()" disabled>
+      <svg viewBox="0 0 24 24">
+        <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
+      </svg>
+      <span id="undoCountText">Undo</span>
+    </button>
+
+    <button type="button" id="copyPillBtn" class="pill-btn" onclick="copyLyrics()">
+      <svg id="copyIcon" viewBox="0 0 24 24">
+        <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/>
+      </svg>
+      <span id="copyPillText">Copy</span>
+    </button>
+  </div>
+
   <!-- Output Area -->
   <div id="outputContainer">
     <div class="output-header">
@@ -458,23 +475,8 @@
       </div>
     </div>
 
-    <!-- Editable Lyric Area with Sticky Floating Action Bar -->
+    <!-- Editable Lyric Area -->
     <div class="editor-wrapper">
-      <div class="editor-sticky-bar">
-        <button type="button" id="editorUndoBtn" class="pill-btn" onclick="triggerUndo()" disabled>
-          <svg viewBox="0 0 24 24">
-            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
-          </svg>
-          <span id="undoCountText">Undo</span>
-        </button>
-
-        <button type="button" id="copyPillBtn" class="pill-btn" onclick="copyLyrics()">
-          <svg id="copyIcon" viewBox="0 0 24 24">
-            <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/>
-          </svg>
-          <span id="copyPillText">Copy</span>
-        </button>
-      </div>
       <textarea id="outputText" placeholder="Lyrics will appear here... you can edit them directly."></textarea>
     </div>
   </div>
@@ -510,11 +512,12 @@
     const songsListContainer = document.getElementById('songsListContainer');
     const copyPillBtn = document.getElementById('copyPillBtn');
     const copyPillText = document.getElementById('copyPillText');
+    const editorFloatingBar = document.getElementById('editorFloatingBar');
     const saveModalOverlay = document.getElementById('saveModalOverlay');
     const modalSongName = document.getElementById('modalSongName');
     const toast = document.getElementById('toast');
 
-    // 20-Step Undo History
+    // 20-Step Granular Undo System
     const MAX_UNDO_STEPS = 20;
     let undoStack = [];
     let currentCommittedText = '';
@@ -528,7 +531,9 @@
     }
 
     function pushToUndoStack(text) {
+      if (text === null || text === undefined) return;
       if (undoStack.length > 0 && undoStack[undoStack.length - 1] === text) return;
+      
       undoStack.push(text);
       if (undoStack.length > MAX_UNDO_STEPS) {
         undoStack.shift();
@@ -546,16 +551,16 @@
       }
     }
 
-    // Capture typing updates reliably across mobile virtual keyboards
+    // Capture every typing input accurately across mobile devices
     outputText.addEventListener('input', (e) => {
       if (isReverting) return;
 
       const newText = outputText.value;
       const lengthDiff = Math.abs(newText.length - currentCommittedText.length);
       const isEnterKey = (e.inputType === 'insertLineBreak' || (newText.slice(-1) === '\n'));
-      const isLargePasteOrCut = lengthDiff > 8;
+      const isPasteOrCut = lengthDiff > 4;
 
-      if (isEnterKey || isLargePasteOrCut) {
+      if (isEnterKey || isPasteOrCut) {
         clearTimeout(typingTimer);
         pushToUndoStack(currentCommittedText);
         currentCommittedText = newText;
@@ -568,10 +573,10 @@
           pushToUndoStack(currentCommittedText);
           currentCommittedText = newText;
         }
-      }, 700);
+      }, 500);
     });
 
-    // Zero-Jump Viewport Undo
+    // Zero-Jump Viewport Undo: Replaces string without dropping viewport location
     function triggerUndo() {
       clearTimeout(typingTimer);
 
@@ -582,27 +587,27 @@
 
       if (undoStack.length === 0) return;
 
-      // Lock view and internal textarea offsets
-      const savedPageY = window.pageYOffset || document.documentElement.scrollTop;
-      const savedTextareaY = outputText.scrollTop;
+      // Lock current viewport position
+      const pageScrollY = window.pageYOffset || document.documentElement.scrollTop;
+      const textareaScrollTop = outputText.scrollTop;
 
       isReverting = true;
       const previousState = undoStack.pop();
       outputText.value = previousState;
       currentCommittedText = previousState;
 
-      // Restore scroll locations without jumping
-      outputText.scrollTop = savedTextareaY;
-      window.scrollTo(0, savedPageY);
+      // Restore scroll positions seamlessly
+      outputText.scrollTop = textareaScrollTop;
+      window.scrollTo({ top: pageScrollY, behavior: 'instant' });
+
+      requestAnimationFrame(() => {
+        outputText.scrollTop = textareaScrollTop;
+        window.scrollTo({ top: pageScrollY, behavior: 'instant' });
+        isReverting = false;
+      });
 
       updateUndoButton();
       showToast('Undone');
-
-      requestAnimationFrame(() => {
-        outputText.scrollTop = savedTextareaY;
-        window.scrollTo(0, savedPageY);
-        isReverting = false;
-      });
     }
 
     const MODELS = [
@@ -618,7 +623,7 @@
     function showToast(msg) {
       toast.textContent = msg;
       toast.style.opacity = '1';
-      setTimeout(() => { toast.style.opacity = '0'; }, 2600);
+      setTimeout(() => { toast.style.opacity = '0'; }, 2400);
     }
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -793,6 +798,7 @@
       currentSongTitle.textContent = song.title;
       outputText.value = song.text;
       outputContainer.style.display = 'block';
+      editorFloatingBar.style.display = 'flex';
       outputContainer.scrollIntoView({ behavior: 'smooth' });
 
       resetHistory(song.text);
@@ -1003,6 +1009,7 @@ ${references}
       generateBtn.disabled = true;
       generateBtn.textContent = 'Starting...';
       outputContainer.style.display = 'none';
+      editorFloatingBar.style.display = 'none';
       outputText.value = '';
 
       try {
@@ -1042,6 +1049,7 @@ ${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styl
           outputText.value = text;
           currentSongTitle.textContent = starter;
           outputContainer.style.display = 'block';
+          editorFloatingBar.style.display = 'flex';
           outputContainer.scrollIntoView({ behavior: 'smooth' });
 
           resetHistory(text);

@@ -205,58 +205,51 @@
       color: #4ade80;
       border-color: #2e6040;
     }
-    .undo-btn {
-      display: none;
-      flex: 1;
-      min-width: 110px;
-      background: #2a2a2c;
-      border: 1px solid #e5a93b;
-      color: #e5a93b;
-      padding: 10px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .undo-btn:active {
-      background: #38383c;
-    }
     .editor-wrapper {
       position: relative;
       margin-top: 10px;
     }
-    .gemini-copy-btn {
+    .editor-floating-bar {
       position: absolute;
       top: 10px;
       right: 10px;
+      display: flex;
+      gap: 6px;
+      z-index: 5;
+    }
+    .pill-btn {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       background: rgba(42, 42, 44, 0.88);
       border: 1px solid rgba(255, 255, 255, 0.12);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       color: #e0e0e0;
-      padding: 6px 12px;
+      padding: 6px 11px;
       border-radius: 6px;
       font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
-      z-index: 5;
     }
-    .gemini-copy-btn:active {
+    .pill-btn:active {
       transform: scale(0.96);
       background: #38383c;
     }
-    .gemini-copy-btn.copied {
+    .pill-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .pill-btn.copied {
       color: #4ade80;
       border-color: rgba(74, 222, 128, 0.4);
       background: rgba(20, 45, 30, 0.9);
     }
-    .gemini-copy-btn svg {
-      width: 14px;
-      height: 14px;
+    .pill-btn svg {
+      width: 13px;
+      height: 13px;
       fill: currentColor;
     }
     #outputText {
@@ -266,7 +259,7 @@
       border: 1px solid var(--border);
       color: #fff;
       padding: 14px;
-      padding-top: 44px;
+      padding-top: 46px;
       border-radius: 8px;
       font-size: 0.95rem;
       line-height: 1.6;
@@ -305,7 +298,6 @@
       cursor: pointer;
     }
 
-    /* Modal Sheet for Explicit Save Options */
     #saveModalOverlay {
       position: fixed;
       top: 0;
@@ -451,18 +443,26 @@
       <div class="refine-actions">
         <button type="button" id="tightenBtn" class="refine-btn" onclick="tightenLyrics()">✂️ Tighten Lines</button>
         <button type="button" id="saveStateBtn" class="refine-btn save-btn" onclick="openSaveModal()">💾 Save</button>
-        <button type="button" id="undoBtn" class="undo-btn" onclick="undoTrim()">↩️ Undo Trim</button>
       </div>
     </div>
 
-    <!-- Editable Lyric Area with Code-Field Copy Button -->
+    <!-- Editable Lyric Area with Code-Field Copy & General Undo Button -->
     <div class="editor-wrapper">
-      <button type="button" id="copyPillBtn" class="gemini-copy-btn" onclick="copyLyrics()">
-        <svg id="copyIcon" viewBox="0 0 24 24">
-          <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/>
-        </svg>
-        <span id="copyPillText">Copy</span>
-      </button>
+      <div class="editor-floating-bar">
+        <button type="button" id="editorUndoBtn" class="pill-btn" onclick="triggerUndo()" disabled>
+          <svg viewBox="0 0 24 24">
+            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
+          </svg>
+          <span id="undoCountText">Undo</span>
+        </button>
+
+        <button type="button" id="copyPillBtn" class="pill-btn" onclick="copyLyrics()">
+          <svg id="copyIcon" viewBox="0 0 24 24">
+            <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/>
+          </svg>
+          <span id="copyPillText">Copy</span>
+        </button>
+      </div>
       <textarea id="outputText" placeholder="Lyrics will appear here... you can edit them directly."></textarea>
     </div>
   </div>
@@ -491,7 +491,8 @@
     const currentSongTitle = document.getElementById('currentSongTitle');
     const generateBtn = document.getElementById('generateBtn');
     const tightenBtn = document.getElementById('tightenBtn');
-    const undoBtn = document.getElementById('undoBtn');
+    const editorUndoBtn = document.getElementById('editorUndoBtn');
+    const undoCountText = document.getElementById('undoCountText');
     const testKeyBtn = document.getElementById('testKeyBtn');
     const settingsDetails = document.getElementById('settingsDetails');
     const songsListContainer = document.getElementById('songsListContainer');
@@ -501,7 +502,51 @@
     const modalSongName = document.getElementById('modalSongName');
     const toast = document.getElementById('toast');
 
-    let previousVersion = null;
+    // 20-Step Undo Stack Management
+    const MAX_UNDO_STEPS = 20;
+    let undoStack = [];
+    let isUndoing = false;
+    let typingTimer = null;
+
+    function pushUndoState(text) {
+      if (isUndoing) return;
+      if (undoStack.length > 0 && undoStack[undoStack.length - 1] === text) return;
+
+      undoStack.push(text);
+      if (undoStack.length > MAX_UNDO_STEPS) {
+        undoStack.shift();
+      }
+      updateUndoButton();
+    }
+
+    function updateUndoButton() {
+      if (undoStack.length > 0) {
+        editorUndoBtn.removeAttribute('disabled');
+        undoCountText.textContent = `Undo (${undoStack.length})`;
+      } else {
+        editorUndoBtn.setAttribute('disabled', 'true');
+        undoCountText.textContent = 'Undo';
+      }
+    }
+
+    function triggerUndo() {
+      if (undoStack.length === 0) return;
+
+      isUndoing = true;
+      const previousState = undoStack.pop();
+      outputText.value = previousState;
+      updateUndoButton();
+      showToast('Undone');
+      isUndoing = false;
+    }
+
+    // Capture manual typing changes with a 600ms debounce
+    outputText.addEventListener('input', () => {
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        pushUndoState(outputText.value);
+      }, 600);
+    });
 
     const MODELS = [
       'gemini-3.8-flash',
@@ -521,6 +566,7 @@
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    // Keyboard shortcuts: Select-all & Undo
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         const active = document.activeElement;
@@ -530,6 +576,10 @@
             selectAllLyrics();
           }
         }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && document.activeElement === outputText) {
+        e.preventDefault();
+        triggerUndo();
       }
     });
 
@@ -629,7 +679,6 @@
       return title;
     }
 
-    // Modal Opening logic for Save
     function openSaveModal() {
       const text = outputText.value.trim();
       const title = currentSongTitle.textContent.trim() || starterLineInput.value.trim() || 'Untitled';
@@ -683,8 +732,8 @@
     }
 
     function loadSong(song) {
-      previousVersion = null;
-      undoBtn.style.display = 'none';
+      undoStack = [];
+      updateUndoButton();
 
       starterLineInput.value = song.title;
       currentSongTitle.textContent = song.title;
@@ -895,8 +944,8 @@ ${references}
         return;
       }
 
-      previousVersion = null;
-      undoBtn.style.display = 'none';
+      undoStack = [];
+      updateUndoButton();
 
       generateBtn.disabled = true;
       generateBtn.textContent = 'Starting...';
@@ -959,14 +1008,14 @@ ${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styl
     async function tightenLyrics() {
       const key = apiKeyInput.value.trim();
       const currentLyrics = outputText.value.trim();
-      const title = currentSongTitle.textContent.trim();
 
       if (!key || !currentLyrics) {
         showToast('No active song to tighten');
         return;
       }
 
-      previousVersion = currentLyrics;
+      // Snapshot prior state before trimming
+      pushUndoState(outputText.value);
 
       tightenBtn.disabled = true;
       tightenBtn.textContent = 'Trimming excess words...';
@@ -996,10 +1045,7 @@ ${currentLyrics}
         const newText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (newText) {
           outputText.value = newText;
-          undoBtn.style.display = 'inline-block';
-          
-          const newVerTitle = saveNewVersion(title, newText);
-          showToast(`Tightened & saved as "${newVerTitle}"`);
+          showToast('Tightened! Tap Undo to revert.');
         } else {
           showToast('Could not trim lyrics.');
         }
@@ -1009,18 +1055,6 @@ ${currentLyrics}
         tightenBtn.disabled = false;
         tightenBtn.textContent = '✂️ Tighten Lines';
       }
-    }
-
-    function undoTrim() {
-      if (!previousVersion) return;
-
-      const title = currentSongTitle.textContent.trim();
-      outputText.value = previousVersion;
-
-      const revertedTitle = saveNewVersion(title, previousVersion);
-      previousVersion = null;
-      undoBtn.style.display = 'none';
-      showToast(`Restored as "${revertedTitle}"`);
     }
 
     function selectAllLyrics() {

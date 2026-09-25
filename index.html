@@ -502,20 +502,28 @@
     const modalSongName = document.getElementById('modalSongName');
     const toast = document.getElementById('toast');
 
-    // 20-Step Undo Stack Management
+    // Robust 20-step undo/redo state manager
     const MAX_UNDO_STEPS = 20;
     let undoStack = [];
-    let isUndoing = false;
-    let typingTimer = null;
+    let redoStack = [];
+    let preEditSnapshot = null;
 
-    function pushUndoState(text) {
-      if (isUndoing) return;
+    function resetHistory(initialText) {
+      undoStack = [];
+      redoStack = [];
+      preEditSnapshot = initialText;
+      updateUndoButton();
+    }
+
+    function recordSnapshot(text) {
+      if (!text && text !== '') return;
       if (undoStack.length > 0 && undoStack[undoStack.length - 1] === text) return;
 
       undoStack.push(text);
       if (undoStack.length > MAX_UNDO_STEPS) {
         undoStack.shift();
       }
+      redoStack = []; // Reset forward redo path on new edits
       updateUndoButton();
     }
 
@@ -532,20 +540,27 @@
     function triggerUndo() {
       if (undoStack.length === 0) return;
 
-      isUndoing = true;
+      // Save current state into redo before reverting
+      redoStack.push(outputText.value);
+
       const previousState = undoStack.pop();
       outputText.value = previousState;
+      preEditSnapshot = previousState;
+
       updateUndoButton();
-      showToast('Undone');
-      isUndoing = false;
+      showToast('Reverted to previous state');
     }
 
-    // Capture manual typing changes with a 600ms debounce
-    outputText.addEventListener('input', () => {
-      clearTimeout(typingTimer);
-      typingTimer = setTimeout(() => {
-        pushUndoState(outputText.value);
-      }, 600);
+    // Capture the state BEFORE modifications happen
+    outputText.addEventListener('focus', () => {
+      preEditSnapshot = outputText.value;
+    });
+
+    outputText.addEventListener('beforeinput', () => {
+      if (preEditSnapshot !== null && preEditSnapshot !== outputText.value) {
+        recordSnapshot(preEditSnapshot);
+      }
+      preEditSnapshot = outputText.value;
     });
 
     const MODELS = [
@@ -566,7 +581,6 @@
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Keyboard shortcuts: Select-all & Undo
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         const active = document.activeElement;
@@ -732,14 +746,13 @@
     }
 
     function loadSong(song) {
-      undoStack = [];
-      updateUndoButton();
-
       starterLineInput.value = song.title;
       currentSongTitle.textContent = song.title;
       outputText.value = song.text;
       outputContainer.style.display = 'block';
       outputContainer.scrollIntoView({ behavior: 'smooth' });
+
+      resetHistory(song.text);
     }
 
     function renderSavedSongs() {
@@ -944,9 +957,6 @@ ${references}
         return;
       }
 
-      undoStack = [];
-      updateUndoButton();
-
       generateBtn.disabled = true;
       generateBtn.textContent = 'Starting...';
       outputContainer.style.display = 'none';
@@ -991,6 +1001,8 @@ ${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styl
           outputContainer.style.display = 'block';
           outputContainer.scrollIntoView({ behavior: 'smooth' });
 
+          resetHistory(text);
+
           const savedTitle = saveNewVersion(starter, text);
           showToast(`Saved as "${savedTitle}"`);
         } else {
@@ -1014,8 +1026,8 @@ ${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styl
         return;
       }
 
-      // Snapshot prior state before trimming
-      pushUndoState(outputText.value);
+      // Record snapshot prior to AI transformation
+      recordSnapshot(outputText.value);
 
       tightenBtn.disabled = true;
       tightenBtn.textContent = 'Trimming excess words...';
@@ -1045,6 +1057,7 @@ ${currentLyrics}
         const newText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (newText) {
           outputText.value = newText;
+          preEditSnapshot = newText;
           showToast('Tightened! Tap Undo to revert.');
         } else {
           showToast('Could not trim lyrics.');

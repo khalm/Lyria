@@ -238,7 +238,7 @@
       background: #38383c;
     }
     .pill-btn:disabled {
-      opacity: 0.4;
+      opacity: 0.35;
       cursor: not-allowed;
       transform: none;
     }
@@ -502,28 +502,25 @@
     const modalSongName = document.getElementById('modalSongName');
     const toast = document.getElementById('toast');
 
-    // Robust 20-step undo/redo state manager
+    // 20-Step Undo History
     const MAX_UNDO_STEPS = 20;
     let undoStack = [];
-    let redoStack = [];
-    let preEditSnapshot = null;
+    let currentCommittedText = '';
+    let typingTimer = null;
+    let isReverting = false;
 
     function resetHistory(initialText) {
       undoStack = [];
-      redoStack = [];
-      preEditSnapshot = initialText;
+      currentCommittedText = initialText || '';
       updateUndoButton();
     }
 
-    function recordSnapshot(text) {
-      if (!text && text !== '') return;
+    function pushToUndoStack(text) {
       if (undoStack.length > 0 && undoStack[undoStack.length - 1] === text) return;
-
       undoStack.push(text);
       if (undoStack.length > MAX_UNDO_STEPS) {
         undoStack.shift();
       }
-      redoStack = []; // Reset forward redo path on new edits
       updateUndoButton();
     }
 
@@ -537,31 +534,68 @@
       }
     }
 
+    // Capture every typing input without mobile keyboard loss
+    outputText.addEventListener('input', (e) => {
+      if (isReverting) return;
+
+      const newText = outputText.value;
+      const lengthDiff = Math.abs(newText.length - currentCommittedText.length);
+      const isEnterKey = (e.inputType === 'insertLineBreak' || (newText.slice(-1) === '\n'));
+      const isLargePasteOrCut = lengthDiff > 10;
+
+      // Immediately save state on Enter or Paste/Cut
+      if (isEnterKey || isLargePasteOrCut) {
+        clearTimeout(typingTimer);
+        pushToUndoStack(currentCommittedText);
+        currentCommittedText = newText;
+        return;
+      }
+
+      // Group regular continuous typing into chunks
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        if (currentCommittedText !== newText) {
+          pushToUndoStack(currentCommittedText);
+          currentCommittedText = newText;
+        }
+      }, 750);
+    });
+
+    // Viewport-safe Undo: Reverts text without jumping the screen
     function triggerUndo() {
+      clearTimeout(typingTimer);
+
+      // If user is currently typing something uncommitted, save it as forward state
+      if (currentCommittedText !== outputText.value) {
+        pushToUndoStack(currentCommittedText);
+        currentCommittedText = outputText.value;
+      }
+
       if (undoStack.length === 0) return;
 
-      // Save current state into redo before reverting
-      redoStack.push(outputText.value);
+      // Lock current scroll positions
+      const pageScrollY = window.scrollY || window.pageYOffset;
+      const textareaScrollTop = outputText.scrollTop;
+      const selectionStart = outputText.selectionStart;
 
+      isReverting = true;
       const previousState = undoStack.pop();
       outputText.value = previousState;
-      preEditSnapshot = previousState;
+      currentCommittedText = previousState;
+
+      // Restore scroll and cursor position exactly
+      outputText.scrollTop = textareaScrollTop;
+      window.scrollTo(0, pageScrollY);
+      
+      const newCursor = Math.min(selectionStart, previousState.length);
+      try {
+        outputText.setSelectionRange(newCursor, newCursor);
+      } catch (err) {}
 
       updateUndoButton();
-      showToast('Reverted to previous state');
+      showToast('Undone');
+      setTimeout(() => { isReverting = false; }, 50);
     }
-
-    // Capture the state BEFORE modifications happen
-    outputText.addEventListener('focus', () => {
-      preEditSnapshot = outputText.value;
-    });
-
-    outputText.addEventListener('beforeinput', () => {
-      if (preEditSnapshot !== null && preEditSnapshot !== outputText.value) {
-        recordSnapshot(preEditSnapshot);
-      }
-      preEditSnapshot = outputText.value;
-    });
 
     const MODELS = [
       'gemini-3.8-flash',
@@ -581,6 +615,7 @@
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         const active = document.activeElement;
@@ -1026,8 +1061,7 @@ ${styleAndThemes ? `--- ARTIST'S THEMATIC UNIVERSE & STYLE BLUEPRINT ---\n${styl
         return;
       }
 
-      // Record snapshot prior to AI transformation
-      recordSnapshot(outputText.value);
+      pushToUndoStack(currentLyrics);
 
       tightenBtn.disabled = true;
       tightenBtn.textContent = 'Trimming excess words...';
@@ -1057,7 +1091,7 @@ ${currentLyrics}
         const newText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (newText) {
           outputText.value = newText;
-          preEditSnapshot = newText;
+          currentCommittedText = newText;
           showToast('Tightened! Tap Undo to revert.');
         } else {
           showToast('Could not trim lyrics.');

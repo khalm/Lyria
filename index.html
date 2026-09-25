@@ -39,7 +39,7 @@
       background-color: var(--bg);
       color: var(--text);
       padding: 16px;
-      padding-bottom: 90px;
+      padding-bottom: 110px;
       line-height: 1.5;
     }
     header {
@@ -214,6 +214,7 @@
       border-color: #2e6040;
     }
 
+    /* Floating Fixed HUD (Always visible when lyrics are present) */
     .editor-wrapper {
       position: relative;
       margin-top: 10px;
@@ -224,11 +225,11 @@
     .editor-floating-bar {
       position: fixed;
       bottom: 24px;
-      right: 20px;
+      right: 16px;
       display: none;
-      gap: 8px;
-      z-index: 150;
-      background: rgba(28, 28, 30, 0.94);
+      gap: 6px;
+      z-index: 1000;
+      background: rgba(26, 26, 28, 0.94);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 30px;
       padding: 6px 10px;
@@ -239,13 +240,13 @@
     .pill-btn {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       background: #2a2a2c;
       border: 1px solid rgba(255, 255, 255, 0.12);
       color: #f0f0f0;
-      padding: 8px 14px;
+      padding: 8px 12px;
       border-radius: 20px;
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.15s ease, color 0.15s ease;
@@ -263,6 +264,16 @@
       color: #4ade80;
       border-color: rgba(74, 222, 128, 0.4);
       background: rgba(20, 45, 30, 0.9);
+    }
+    .pill-btn svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
     #outputText {
       width: 100%;
@@ -320,7 +331,7 @@
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 200;
+      z-index: 1200;
       padding: 20px;
     }
     .modal-box {
@@ -389,7 +400,7 @@
       opacity: 0;
       transition: opacity 0.25s ease;
       pointer-events: none;
-      z-index: 300;
+      z-index: 1300;
       text-align: center;
       max-width: 85%;
     }
@@ -440,10 +451,14 @@
     <button id="generateBtn" class="primary-btn" onclick="generateLyrics()">Generate Original Song</button>
   </div>
 
-  <!-- Bottom Floating Action Bar -->
+  <!-- Persistent Floating HUD Toolbar (Undo, Redo, Copy) -->
   <div id="editorFloatingBar" class="editor-floating-bar">
     <button type="button" id="editorUndoBtn" class="pill-btn" onclick="triggerUndo()" disabled>
       ↩️ <span id="undoCountText">Undo</span>
+    </button>
+
+    <button type="button" id="editorRedoBtn" class="pill-btn" onclick="triggerRedo()" disabled>
+      ↪️ <span id="redoCountText">Redo</span>
     </button>
 
     <button type="button" id="copyPillBtn" class="pill-btn" onclick="copyLyrics()">
@@ -500,7 +515,9 @@
     const generateBtn = document.getElementById('generateBtn');
     const tightenBtn = document.getElementById('tightenBtn');
     const editorUndoBtn = document.getElementById('editorUndoBtn');
+    const editorRedoBtn = document.getElementById('editorRedoBtn');
     const undoCountText = document.getElementById('undoCountText');
+    const redoCountText = document.getElementById('redoCountText');
     const testKeyBtn = document.getElementById('testKeyBtn');
     const settingsDetails = document.getElementById('settingsDetails');
     const songsListContainer = document.getElementById('songsListContainer');
@@ -511,16 +528,18 @@
     const modalSongName = document.getElementById('modalSongName');
     const toast = document.getElementById('toast');
 
-    // 20-Step Undo History
-    const MAX_UNDO_STEPS = 20;
+    // 20-Step Undo & Redo History
+    const MAX_HISTORY_STEPS = 20;
     let undoStack = [];
+    let redoStack = [];
     let currentCommittedText = '';
     let typingTimer = null;
 
     function resetHistory(initialText) {
       undoStack = [];
+      redoStack = [];
       currentCommittedText = initialText || '';
-      updateUndoButton();
+      updateHistoryButtons();
     }
 
     function pushToUndoStack(text) {
@@ -528,13 +547,14 @@
       if (undoStack.length > 0 && undoStack[undoStack.length - 1] === text) return;
       
       undoStack.push(text);
-      if (undoStack.length > MAX_UNDO_STEPS) {
+      if (undoStack.length > MAX_HISTORY_STEPS) {
         undoStack.shift();
       }
-      updateUndoButton();
+      redoStack = []; // Clear redo chain whenever a new change is committed
+      updateHistoryButtons();
     }
 
-    function updateUndoButton() {
+    function updateHistoryButtons() {
       if (undoStack.length > 0) {
         editorUndoBtn.removeAttribute('disabled');
         undoCountText.textContent = `Undo (${undoStack.length})`;
@@ -542,9 +562,17 @@
         editorUndoBtn.setAttribute('disabled', 'true');
         undoCountText.textContent = 'Undo';
       }
+
+      if (redoStack.length > 0) {
+        editorRedoBtn.removeAttribute('disabled');
+        redoCountText.textContent = `Redo (${redoStack.length})`;
+      } else {
+        editorRedoBtn.setAttribute('disabled', 'true');
+        redoCountText.textContent = 'Redo';
+      }
     }
 
-    // Capture typing updates reliably across mobile virtual keyboards
+    // Capture typing updates reliably without dropping mobile keystrokes
     outputText.addEventListener('input', (e) => {
       const newText = outputText.value;
       const lengthDiff = Math.abs(newText.length - currentCommittedText.length);
@@ -567,7 +595,7 @@
       }, 500);
     });
 
-    // Zero-Jump Viewport Undo
+    // Zero-Jump Undo
     function triggerUndo() {
       clearTimeout(typingTimer);
 
@@ -579,12 +607,11 @@
       if (undoStack.length === 0) return;
 
       const previousState = undoStack.pop();
+      redoStack.push(outputText.value);
 
-      // Read positions before replacement
       const pageScrollY = window.scrollY || window.pageYOffset;
       const textareaScrollTop = outputText.scrollTop;
 
-      // Freeze document scroll
       document.documentElement.style.scrollBehavior = 'auto';
 
       outputText.value = previousState;
@@ -598,8 +625,37 @@
         window.scrollTo(0, pageScrollY);
       });
 
-      updateUndoButton();
+      updateHistoryButtons();
       showToast('Undone');
+    }
+
+    // Zero-Jump Redo
+    function triggerRedo() {
+      clearTimeout(typingTimer);
+
+      if (redoStack.length === 0) return;
+
+      const nextState = redoStack.pop();
+      undoStack.push(outputText.value);
+
+      const pageScrollY = window.scrollY || window.pageYOffset;
+      const textareaScrollTop = outputText.scrollTop;
+
+      document.documentElement.style.scrollBehavior = 'auto';
+
+      outputText.value = nextState;
+      currentCommittedText = nextState;
+
+      outputText.scrollTop = textareaScrollTop;
+      window.scrollTo(0, pageScrollY);
+
+      requestAnimationFrame(() => {
+        outputText.scrollTop = textareaScrollTop;
+        window.scrollTo(0, pageScrollY);
+      });
+
+      updateHistoryButtons();
+      showToast('Redone');
     }
 
     const MODELS = [
@@ -620,7 +676,7 @@
 
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts (Ctrl+Z, Ctrl+Y / Shift+Ctrl+Z, Ctrl+A)
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         const active = document.activeElement;
@@ -631,9 +687,14 @@
           }
         }
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && document.activeElement === outputText) {
-        e.preventDefault();
-        triggerUndo();
+      if (document.activeElement === outputText) {
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          triggerUndo();
+        } else if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+          e.preventDefault();
+          triggerRedo();
+        }
       }
     });
 
